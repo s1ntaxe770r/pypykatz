@@ -1,9 +1,12 @@
+import platform
 from .commons.common import *
 from .lsadecryptor import *
 
 from minidump.minidumpfile import MinidumpFile
 from minikerberos.ccache import CCACHE
-from .commons.readers.local.live_reader import LiveReader
+
+if platform.system() == 'Windows':
+	from .commons.readers.local.live_reader import LiveReader
 
 class pypykatz:
 	"""mimikatz offline"""
@@ -31,6 +34,8 @@ class pypykatz:
 		
 	@staticmethod
 	def go_live():
+		if platform.system() != 'Windows':
+			raise Exception('This only works on Windows')
 		reader = LiveReader()
 		sysinfo = KatzSystemInfo.from_live_reader(reader)
 		mimi = pypykatz(reader.get_buffered_reader(), sysinfo)
