@@ -50,7 +50,11 @@ class CloudapDecryptor(PackageDecryptor):
 	def add_entry(self, cloudap_entry):
 		cred = CloudapCredential()
 		cred.luid = cloudap_entry.LocallyUniqueIdentifier
-
+		print('cloudap_entry.LocallyUniqueIdentifier %s' % hex(cloudap_entry.LocallyUniqueIdentifier))
+		print('cloudap_entry.cacheEntry pointer: %s' % hex(cloudap_entry.cacheEntry.value))
+		if cloudap_entry.cacheEntry is not None or cloudap_entry.cacheEntry.value == 0:
+			return
+		
 		cache = cloudap_entry.cacheEntry.read(self.reader)
 		cred.cachedir = cache.toname.decode('utf-16-le').replace('\x00','')
 		if cache.cbPRT != 0 and cache.PRT.value != 0:
