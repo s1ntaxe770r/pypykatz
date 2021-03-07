@@ -6,7 +6,7 @@
 import io
 import json
 import hashlib
-from pypykatz.lsadecryptor.package_commons import PackageDecryptor
+from pypykatz.lsadecryptor.package_commons import PackageDecryptor, ErrorCredential
 
 class DpapiCredential:
 	def __init__(self):
@@ -41,6 +41,7 @@ class DpapiDecryptor(PackageDecryptor):
 		super().__init__('Dpapi', lsa_decryptor, sysinfo, reader)
 		self.decryptor_template = decryptor_template
 		self.credentials = []
+		self.errors = []
 		
 
 	def find_first_entry(self, modulename):
@@ -50,17 +51,19 @@ class DpapiDecryptor(PackageDecryptor):
 		return ptr_entry, ptr_entry_loc
 		
 	def add_entry(self, dpapi_entry):
-		
-		if dpapi_entry and dpapi_entry.keySize > 0: #and dpapi_entry.keySize % 8 == 0:
-			dec_masterkey = self.decrypt_password(dpapi_entry.key, bytes_expected = True)
-			sha_masterkey = hashlib.sha1(dec_masterkey).hexdigest()
-			
-			c = DpapiCredential()
-			c.luid = dpapi_entry.LogonId
-			c.key_guid = dpapi_entry.KeyUid
-			c.masterkey = dec_masterkey.hex()
-			c.sha1_masterkey = sha_masterkey
-			self.credentials.append(c)	
+		try:
+			if dpapi_entry and dpapi_entry.keySize > 0: #and dpapi_entry.keySize % 8 == 0:
+				dec_masterkey = self.decrypt_password(dpapi_entry.key, bytes_expected = True)
+				sha_masterkey = hashlib.sha1(dec_masterkey).hexdigest()
+				
+				c = DpapiCredential()
+				c.luid = dpapi_entry.LogonId
+				c.key_guid = dpapi_entry.KeyUid
+				c.masterkey = dec_masterkey.hex()
+				c.sha1_masterkey = sha_masterkey
+				self.credentials.append(c)
+		except Exception as e:
+			self.errors.append(ErrorCredential('Dpapi', 'parsing error', e))
 	
 	def start(self):
 		for modulename in ['lsasrv.dll','dpapisrv.dll']:

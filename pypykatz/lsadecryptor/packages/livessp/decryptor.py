@@ -46,23 +46,26 @@ class LiveSspDecryptor(PackageDecryptor):
 		return ptr_entry, ptr_entry_loc
 		
 	def add_entry(self, ssp_entry):
-		c = LiveSspCredential()
-		c.luid = ssp_entry.LocallyUniqueIdentifier
+		try:
+			c = LiveSspCredential()
+			c.luid = ssp_entry.LocallyUniqueIdentifier
+				
+			suppCreds = ssp_entry.suppCreds.read(self.reader)
+				
+			c.username = suppCreds.credentials.UserName.read_string(self.reader)
+			c.domainname = suppCreds.credentials.Domaine.read_string(self.reader)
+			if suppCreds.credentials.Password.Length != 0:
+				enc_data = suppCreds.credentials.Password.read_maxdata(self.reader)
+				if c.username.endswith('$') is True:
+					c.password = self.decrypt_password(enc_data, bytes_expected=True)
+					if c.password is not None:
+						c.password = c.password.hex()
+				else:
+					c.password = self.decrypt_password(enc_data)
 			
-		suppCreds = ssp_entry.suppCreds.read(self.reader)
-			
-		c.username = suppCreds.credentials.UserName.read_string(self.reader)
-		c.domainname = suppCreds.credentials.Domaine.read_string(self.reader)
-		if suppCreds.credentials.Password.Length != 0:
-			enc_data = suppCreds.credentials.Password.read_maxdata(self.reader)
-			if c.username.endswith('$') is True:
-				c.password = self.decrypt_password(enc_data, bytes_expected=True)
-				if c.password is not None:
-					c.password = c.password.hex()
-			else:
-				c.password = self.decrypt_password(enc_data)
-		
-		self.credentials.append(c)
+			self.credentials.append(c)
+		except Exception as e:
+			self.errors.append(ErrorCredential('kerberos', 'parsing generic credentials error', e))
 	
 	def start(self):
 		try:

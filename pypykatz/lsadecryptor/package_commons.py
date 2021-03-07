@@ -9,6 +9,13 @@ import logging
 from pypykatz.commons.common import hexdump
 from pypykatz.commons.win_datatypes import RTL_AVL_TABLE
 
+
+class ErrorCredential:
+	def __init__(self, module, reason, exc):
+		self.module = module
+		self.reason = reason
+		self.exception = exc
+
 class Logger:
 	def __init__(self, module_name, package_name, sysinfo):
 		self.package_name = package_name

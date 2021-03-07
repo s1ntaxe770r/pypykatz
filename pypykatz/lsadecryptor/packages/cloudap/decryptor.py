@@ -1,6 +1,6 @@
 import json
 import hashlib
-from pypykatz.lsadecryptor.package_commons import PackageDecryptor
+from pypykatz.lsadecryptor.package_commons import PackageDecryptor, ErrorCredential
 
 class CloudapCredential:
 	def __init__(self):
@@ -40,6 +40,7 @@ class CloudapDecryptor(PackageDecryptor):
 		super().__init__('Cloudap', lsa_decryptor, sysinfo, reader)
 		self.decryptor_template = decryptor_template
 		self.credentials = []
+		self.errors = []
 
 	def find_first_entry(self):
 		position = self.find_signature('cloudAP.dll',self.decryptor_template.signature)
@@ -48,34 +49,39 @@ class CloudapDecryptor(PackageDecryptor):
 		return ptr_entry, ptr_entry_loc
 
 	def add_entry(self, cloudap_entry):
-		cred = CloudapCredential()
-		cred.luid = cloudap_entry.LocallyUniqueIdentifier
-		print('cloudap_entry.LocallyUniqueIdentifier %s' % hex(cloudap_entry.LocallyUniqueIdentifier))
-		print('cloudap_entry.cacheEntry pointer: %s' % hex(cloudap_entry.cacheEntry.value))
-		if cloudap_entry.cacheEntry is not None or cloudap_entry.cacheEntry.value == 0:
-			return
-		
-		cache = cloudap_entry.cacheEntry.read(self.reader)
-		cred.cachedir = cache.toname.decode('utf-16-le').replace('\x00','')
-		if cache.cbPRT != 0 and cache.PRT.value != 0:
-			temp = self.decrypt_password(cache.PRT.read_raw(self.reader, cache.cbPRT), bytes_expected=True)
-			try:
-				temp = temp.decode()
-			except:
-				pass
+		try:
+			cred = CloudapCredential()
+			cred.luid = cloudap_entry.LocallyUniqueIdentifier
+			print('cloudap_entry.LocallyUniqueIdentifier %s' % hex(cloudap_entry.LocallyUniqueIdentifier))
+			print('cloudap_entry.cacheEntry pointer: %s' % hex(cloudap_entry.cacheEntry.value))
+			if cloudap_entry.cacheEntry is not None or cloudap_entry.cacheEntry.value == 0:
+				return
 			
-			cred.PRT = temp
-			
-		if cache.toDetermine != 0:
-			unk = cache.toDetermine.read(self.reader)
-			if unk is not None:
-				cred.key_guid = unk.guid.value
-				cred.dpapi_key = self.decrypt_password(unk.unk)
-				cred.dpapi_key_sha1 = hashlib.sha1(bytes.fromhex(cred.dpapi_key)).hexdigest()
+			cache = cloudap_entry.cacheEntry.read(self.reader)
+			cred.cachedir = cache.toname.decode('utf-16-le').replace('\x00','')
+			if cache.cbPRT != 0 and cache.PRT.value != 0:
+				temp = self.decrypt_password(cache.PRT.read_raw(self.reader, cache.cbPRT), bytes_expected=True)
+				try:
+					temp = temp.decode()
+				except:
+					pass
+				
+				cred.PRT = temp
+				
+			if cache.toDetermine != 0:
+				unk = cache.toDetermine.read(self.reader)
+				if unk is not None:
+					cred.key_guid = unk.guid.value
+					cred.dpapi_key = self.decrypt_password(unk.unk)
+					cred.dpapi_key_sha1 = hashlib.sha1(bytes.fromhex(cred.dpapi_key)).hexdigest()
 
-		if cred.PRT is None and cred.key_guid is None:
+			if cred.PRT is None and cred.key_guid is None:
+				return
+			self.credentials.append(cred)
+		except Exception as e:
+			self.log('Failed to parse entry! Reason: %s' % e)
+			self.errors.append(ErrorCredential('Cloudap', 'parsing error', e))
 			return
-		self.credentials.append(cred)
 	
 	def start(self):
 		try:
@@ -83,7 +89,7 @@ class CloudapDecryptor(PackageDecryptor):
 		except Exception as e:
 			self.log('Failed to find structs! Reason: %s' % e)
 			return
-		
+
 		self.reader.move(entry_ptr_loc)
 		entry_ptr = self.decryptor_template.list_entry(self.reader)
 		self.walk_list(entry_ptr, self.add_entry)

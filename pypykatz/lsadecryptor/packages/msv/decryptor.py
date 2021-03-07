@@ -11,7 +11,7 @@ from pypykatz.commons.filetime import filetime_to_dt
 #from pypykatz.commons.win_datatypes import *
 from pypykatz.lsadecryptor.packages.msv.templates import MSV1_0_PRIMARY_CREDENTIAL_STRANGE_DEC
 from pypykatz.lsadecryptor.packages.credman.templates import KIWI_CREDMAN_LIST_STARTER, KIWI_CREDMAN_SET_LIST_ENTRY
-from pypykatz.lsadecryptor.package_commons import PackageDecryptor
+from pypykatz.lsadecryptor.package_commons import PackageDecryptor, ErrorCredential
 
 class MsvCredential:
 	def __init__(self):
@@ -277,6 +277,7 @@ class MsvDecryptor(PackageDecryptor):
 		self.entries_seen = {}
 		self.logon_sessions = {}
 		self.logon_session_count = None
+		self.errors = []
 		
 		self.current_logonsession = None
 
@@ -324,23 +325,25 @@ class MsvDecryptor(PackageDecryptor):
 			self.walk_list(list_starter.start, self.add_credman_credential, override_ptr = self.credman_decryptor_template.list_entry)
 		
 	def add_credman_credential(self, credman_credential_entry):
-		
-		c = CredmanCredential()
-		c.username = credman_credential_entry.user.read_string(self.reader)
-		c.domainname = credman_credential_entry.server2.read_string(self.reader)
-		
-		if credman_credential_entry.cbEncPassword and credman_credential_entry.cbEncPassword != 0:
-			enc_data = credman_credential_entry.encPassword.read_raw(self.reader, credman_credential_entry.cbEncPassword)
-			if c.username.endswith('$') is True:
-				c.password = self.decrypt_password(enc_data, bytes_expected=True)
-				if c.password is not None:
-					c.password = c.password.hex()
-			else:
-				c.password = self.decrypt_password(enc_data)
-		
-		c.luid = self.current_logonsession.luid
+		try:
+			c = CredmanCredential()
+			c.username = credman_credential_entry.user.read_string(self.reader)
+			c.domainname = credman_credential_entry.server2.read_string(self.reader)
 			
-		self.current_logonsession.credman_creds.append(c)
+			if credman_credential_entry.cbEncPassword and credman_credential_entry.cbEncPassword != 0:
+				enc_data = credman_credential_entry.encPassword.read_raw(self.reader, credman_credential_entry.cbEncPassword)
+				if c.username.endswith('$') is True:
+					c.password = self.decrypt_password(enc_data, bytes_expected=True)
+					if c.password is not None:
+						c.password = c.password.hex()
+				else:
+					c.password = self.decrypt_password(enc_data)
+			
+			c.luid = self.current_logonsession.luid
+				
+			self.current_logonsession.credman_creds.append(c)
+		except Exception as e:
+			self.errors.append(ErrorCredential('credman', 'parsing error', e))
 		
 	
 	def add_primary_credentials(self, primary_credentials_entry):
